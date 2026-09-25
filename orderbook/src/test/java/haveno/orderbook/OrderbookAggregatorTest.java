@@ -178,8 +178,8 @@ public class OrderbookAggregatorTest {
 
     @Test
     void pricesReturnsIndexPricesForActiveMarkets() {
-        when(offerBookService.getOffers()).thenReturn(List.of(
-                offer("EUR", OfferDirection.BUY, 150.0, 1)));
+        Offer eur = offer("EUR", OfferDirection.BUY, 150.0, 1);
+        when(offerBookService.getOffers()).thenReturn(List.of(eur));
 
         Map<String, Double> prices = aggregator.prices();
         assertEquals(151.0, prices.get("EUR"));

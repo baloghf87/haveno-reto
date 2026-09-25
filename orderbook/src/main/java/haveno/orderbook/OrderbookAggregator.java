@@ -92,7 +92,7 @@ public class OrderbookAggregator {
         h.numConnections = p2PService.getNetworkNode().getAllConnections().size();
         h.numOffers = offers.size();
         h.numMarkets = countMarkets(offers);
-        h.numTradeStatistics = tradeStatisticsManager.getObservableTradeStatisticsList().size();
+        h.numTradeStatistics = tradeStatisticsManager.getTradeStatisticsListCopy().size();
         h.priceFeedAvailable = hasAnyRecentPrice();
         h.uptimeSeconds = (System.currentTimeMillis() - startTimeMs) / 1000;
         h.version = OrderbookConfig.VERSION;
