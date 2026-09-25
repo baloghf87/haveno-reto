@@ -1,70 +1,101 @@
 # Haveno Orderbook & Liquidity API
 
-A wallet-less, fund-less **observer node** that joins the Haveno P2P network, receives the
-fully-replicated offer book and trade-statistics store, and exposes a **neutral,
-network-wide orderbook and liquidity view** over a read-only REST/JSON API.
+A wallet-less, fund-less **observer node** for the Haveno network that ingests the
+fully-replicated P2P offer book and completed-trade store and exposes a **neutral,
+network-wide orderbook and liquidity view** over a read-only **REST/JSON API**.
 
-It is built on the same lightweight P2P bootstrap as the seed and statistics nodes
-(`ExecutableForAppWithP2p` + `ModuleForAppWithP2p`), so it never starts a Monero wallet,
-holds no funds, and never registers to trade — it only *observes*.
+It reuses the same lightweight P2P-only bootstrap as the seed and statistics nodes
+(`ExecutableForAppWithP2p` + `ModuleForAppWithP2p`), so it **never starts a Monero wallet,
+holds no funds, and never registers to trade** — it only observes and serves data.
 
-> **This document is written to be handed to other agents/developers as the integration
-> contract.** The machine-readable spec is served live at `GET /api/v1/openapi.yaml`
-> (source: [`src/main/resources/openapi.yaml`](src/main/resources/openapi.yaml)).
-
----
-
-## Quick start
-
-```bash
-# 1. Build the whole app + this module (needs jitpack.io + Maven Central reachable)
-./gradlew :orderbook:installDist
-
-# 2a. Run directly against a local dev network (see "Local soak" below)
-HAVENO_REST_PORT=8080 ./haveno-orderbook \
-  --baseCurrencyNetwork=XMR_LOCAL --useLocalhostForP2P=true \
-  --useNativeXmrWallet=false --appDataDir=/tmp/ob-data --xmrNode=http://localhost:28081
-
-# 2b. Or build & run the container (mainnet)
-docker build -t haveno-orderbook:latest orderbook
-docker run -p 8080:8080 -e HAVENO_XMR_NODE=http://<monerod>:18081 haveno-orderbook:latest
-
-# 3. Query
-curl -s localhost:8080/api/v1/health | jq
-curl -s localhost:8080/api/v1/markets | jq
-curl -s 'localhost:8080/api/v1/orderbook/EUR?depth=10' | jq
-```
+> This document is the single reference for the feature: what it is, how it works, how to
+> build/run/deploy it, how it was verified, and its known limits. The machine-readable API
+> contract is served live at `GET /api/v1/openapi.yaml`
+> (source: [`src/main/resources/openapi.yaml`](src/main/resources/openapi.yaml)); a
+> feasibility study and mainnet runbook are in
+> [`docs/orderbook-api-feasibility.md`](../docs/orderbook-api-feasibility.md); k3s/k8s
+> deployment details are in [`k8s/README.md`](k8s/README.md).
 
 ---
 
-## API reference
+## Why this works (design in one paragraph)
 
-- **Base URL:** `http://<host>:8080/api/v1`
-- **Method:** all endpoints are `GET`
-- **Auth:** none (read-only public data). Terminate TLS + apply auth/rate-limiting at an
-  ingress/reverse proxy if exposing publicly.
-- **Content type:** `application/json; charset=utf-8` (add `?pretty=true` for indented JSON).
-- **CORS:** `Access-Control-Allow-Origin: *`.
-- **Errors:** non-2xx responses are `{"error": "...", "status": <code>}`.
+Haveno is a Bisq-style flood-fill P2P network: every fully-bootstrapped node receives a
+**complete replica** of all currently-live offers (`OfferPayload`, ~11-minute TTL, gossiped
+via `P2PDataStorage`) and of the append-only completed-trade store (`TradeStatistics3`). So a
+single passive node already holds the entire network orderbook in memory — no crawling or
+cross-node aggregation is needed. This module adds a **neutral aggregation layer** over that
+in-memory data plus a **REST transport**. Unlike the daemon's existing gRPC `GetOffers`
+(which filters to offers *takeable by the local node* and hides your own), this reads
+`OfferBookService.getOffers()` **unfiltered** for a true market-wide view.
 
-### Conventions (read this first)
+---
+
+## Architecture
+
+| Component | File |
+|---|---|
+| Entry point (wallet-less P2P bootstrap) | `src/main/java/haveno/orderbook/OrderbookMain.java` |
+| Node wiring (pins services, starts REST) | `src/main/java/haveno/orderbook/OrderbookNode.java` |
+| Neutral aggregation (orderbook/markets/trades/prices) | `src/main/java/haveno/orderbook/OrderbookAggregator.java` |
+| REST server (JDK `HttpServer` + Gson) | `src/main/java/haveno/orderbook/RestApiServer.java` |
+| Env-driven config | `src/main/java/haveno/orderbook/OrderbookConfig.java` |
+| JSON DTOs (API contract) | `src/main/java/haveno/orderbook/model/Dto.java` |
+| OpenAPI 3 spec (served at `/api/v1/openapi.yaml`) | `src/main/resources/openapi.yaml` |
+| Unit tests | `src/test/java/haveno/orderbook/OrderbookAggregatorTest.java` |
+
+Data sources (all existing `core`/`p2p` services, read directly — **core is unmodified**):
+`OfferBookService` (live offers), `PriceFeedService` (external index prices),
+`TradeStatisticsManager` (completed trades), `P2PService` (connection/bootstrap state). The
+depth logic mirrors the pattern in `core/.../api/CorePriceService.getMarketDepth()`.
+
+The REST layer uses the JDK's bundled `com.sun.net.httpserver.HttpServer` and the
+already-present Gson, so it adds **no new third-party dependency** (Gradle
+dependency-verification metadata is unchanged).
+
+---
+
+## Data exposed
+
+Every market is `XMR/<currency>` (no cross-currency pairs). The API surfaces:
+
+- **Live orderbook** per market: aggregated bid/ask price levels with size and cumulative
+  depth, plus best bid/ask/spread/mid.
+- **Per-market summaries**: liquidity per side (XMR), unique makers, offer counts, index
+  price, last trade price, 24h volume/count.
+- **Raw offers**: per-offer detail — direction, price (fixed or resolved from a market
+  margin), amount/min-amount, payment method, maker/taker/penalty fees, buyer/seller
+  security deposits, trade limits/period, F2F country/city, private-offer flag, maker onion
+  address (redacted by default), date.
+- **Reference (index) prices** from the price feed (used to resolve margin-priced offers).
+- **Completed-trade history** per market (price, amount, volume, payment method, date).
+
+---
+
+## REST API reference
+
+- **Base URL:** `http://<host>:8080/api/v1` · all endpoints are `GET` · no auth (read-only).
+- **Content type:** `application/json; charset=utf-8` (`?pretty=true` for indented JSON).
+- **CORS:** `Access-Control-Allow-Origin: *` · **Errors:** `{"error": "...", "status": <code>}`.
+
+### Conventions (read first)
 
 | Concept | Meaning |
 |---|---|
-| Market | Always `XMR/<currency>` — there are no cross-currency pairs. Address a market by its **counter-currency code** (`EUR`, `USD`, `BTC`, …). |
+| Market | Always `XMR/<currency>`; address it by the **counter-currency code** (`EUR`, `USD`, `BTC`, `BCH`, …). |
 | Amounts | `amountXmr`, `*LiquidityXmr`, `cumulativeXmr` are in **whole XMR**. |
-| Prices | Counter currency **per 1 XMR** (fiat/traditional markets). Crypto markets follow the offer's monetary convention. |
-| Direction | Maker's perspective on XMR: **`BUY` = bid** (maker buys XMR), **`SELL` = ask** (maker sells XMR). |
+| Prices | Counter currency **per 1 XMR** (fiat/traditional); crypto markets follow the offer's monetary convention. |
+| Direction | Maker's perspective on XMR: **`BUY` = bid**, **`SELL` = ask**. |
 | Timestamps | Unix epoch **milliseconds**, UTC. |
-| Unpriced offers | Market-based (margin) offers only get a numeric price when a recent reference price exists; otherwise `price` is `null` and they are counted in `unpricedOfferCount`. |
-| Freshness | Offers expire after ~11 min unless refreshed, so the book is **currently-live offers**, not history. |
-| Trade history | Completed trades carry **no direction**; publication is delayed up to 24h for privacy, so 24h volume lags real time. |
+| Unpriced offers | Margin offers with no recent reference price have `price: null` and are counted in `unpricedOfferCount`, not placed on a level. |
+| Freshness | Offers expire after ~11 min unless refreshed → the book is **currently-live offers**. |
+| Trade history | Completed trades carry **no direction**; publication is delayed up to 24h for privacy, so 24h volume lags. |
 
 ### Endpoints
 
 | Endpoint | Description |
 |---|---|
-| `GET /health` | Node + API health; use for k8s liveness/readiness. |
+| `GET /health` | Node + API health (k8s liveness/readiness). |
 | `GET /markets` | All active markets with liquidity + price summaries. |
 | `GET /ticker` | Alias of `/markets`. |
 | `GET /orderbook/{market}?depth={n}` | Aggregated bid/ask levels + cumulative depth. |
@@ -73,60 +104,30 @@ curl -s 'localhost:8080/api/v1/orderbook/EUR?depth=10' | jq
 | `GET /trades/{market}?limit={n}&since={epochMs}` | Completed-trade history, newest first. |
 | `GET /openapi.yaml` | Machine-readable OpenAPI 3 spec. |
 
-### Example responses
+### Example
 
-`GET /api/v1/health`
+`GET /api/v1/orderbook/BCH`
 ```json
 {
-  "status": "UP",
-  "bootstrapped": true,
-  "network": "XMR_MAINNET",
-  "numConnections": 11,
-  "numOffers": 342,
-  "numMarkets": 27,
-  "numTradeStatistics": 84213,
-  "priceFeedAvailable": true,
-  "uptimeSeconds": 5403,
-  "version": "1.0.0",
-  "timestamp": 1758790000000
-}
-```
-
-`GET /api/v1/orderbook/EUR?depth=2`
-```json
-{
-  "market": "XMR/EUR",
-  "counterCurrency": "EUR",
-  "currencyType": "fiat",
-  "indexPrice": 151.0,
-  "bids": [
-    {"price": 150.2, "amountXmr": 2.5, "offerCount": 1, "cumulativeXmr": 2.5},
-    {"price": 149.0, "amountXmr": 1.0, "offerCount": 2, "cumulativeXmr": 3.5}
-  ],
-  "asks": [
-    {"price": 151.8, "amountXmr": 3.0, "offerCount": 1, "cumulativeXmr": 3.0},
-    {"price": 152.5, "amountXmr": 0.5, "offerCount": 1, "cumulativeXmr": 3.5}
-  ],
+  "market": "XMR/BCH",
+  "counterCurrency": "BCH",
+  "currencyType": "crypto",
+  "indexPrice": 1.7258283749,
+  "bids": [{"price": 0.0048, "amountXmr": 0.8, "offerCount": 1, "cumulativeXmr": 0.8}],
+  "asks": [{"price": 0.005,  "amountXmr": 1.0, "offerCount": 1, "cumulativeXmr": 1.0}],
   "unpricedOfferCount": 0,
-  "timestamp": 1758790000000
+  "timestamp": 1790320638038
 }
 ```
 
-`GET /api/v1/markets` → array of `MarketSummary` (best bid/ask, spread, liquidity per side,
-unique makers, index price, last trade price, 24h volume/count). See the OpenAPI schema for
-every field.
+### Notes for agent/automation consumers
 
-### Notes for agent integration
-
-- **Discover the shape at runtime:** fetch `GET /api/v1/openapi.yaml` and generate a client
-  or ground a tool schema from it.
-- **Enumerate markets first** via `/markets`, then drill into `/orderbook/{code}` and
-  `/trades/{code}`. Never assume a fixed market list — it is whatever is currently live.
-- **Handle nullable price fields.** `bestBid`, `bestAsk`, `spread`, `indexPrice`,
-  `lastTradePrice`, and offer `price`/`volume` can be `null`.
-- **Poll politely.** Data changes on the ~11-minute offer TTL cadence; polling every
-  10–30s is plenty. There is no push/streaming endpoint (yet).
-- **Privacy:** maker onion addresses are redacted unless `HAVENO_EXPOSE_MAKER_ADDRESS=true`.
+- Fetch `GET /api/v1/openapi.yaml` at runtime to generate a client or ground a tool schema.
+- Enumerate `/markets` first, then drill into `/orderbook/{code}` and `/trades/{code}`; never
+  assume a fixed market list — it's whatever is currently live.
+- Handle nullable price fields (`bestBid`, `bestAsk`, `spread`, `indexPrice`,
+  `lastTradePrice`, offer `price`/`volume`).
+- Poll every 10–30s (data changes on the ~11-min TTL cadence); there is no streaming endpoint.
 
 ---
 
@@ -137,37 +138,114 @@ every field.
 | `HAVENO_REST_HOST` | `0.0.0.0` | REST bind interface. |
 | `HAVENO_REST_PORT` | `8080` | REST port. |
 | `HAVENO_BASE_CURRENCY_NETWORK` | `XMR_MAINNET` | `XMR_MAINNET` / `XMR_STAGENET` / `XMR_LOCAL`. |
-| `HAVENO_XMR_NODE` | — | monerod URI for reserve-spent validation. |
+| `HAVENO_XMR_NODE` | — | monerod URI for reserve-spent offer validation. |
 | `HAVENO_APP_DATA_DIR` | `/data` | P2P/Tor data directory (persist in k8s). |
 | `HAVENO_EXPOSE_MAKER_ADDRESS` | `false` | Include maker onion address in `/offers`. |
 | `HAVENO_MAX_TRADES` | `5000` | Cap on `/trades` rows. |
 | `HAVENO_HTTP_THREADS` | `8` | REST server worker threads. |
 | `HAVENO_USE_LOCALHOST_FOR_P2P` | — | `true` for local dev networks. |
 
-Advanced Haveno flags can be appended after the mapped ones (the container passes extra
-args verbatim), e.g. `--seedNodes=...`, `--useTorForXmr=off`.
+Extra Haveno CLI flags can be appended after the mapped ones (the container passes them
+verbatim), e.g. `--seedNodes=...`, `--useTorForXmr=off`, `--torrcFile=...`.
 
 ---
 
-## Deployment (Kubernetes)
+## Build & run
 
-Manifests are in [`k8s/`](k8s/): `configmap.yaml`, `deployment.yaml` (+ PVC), `service.yaml`.
+```bash
+# Build the app distribution (needs jitpack.io + Maven Central reachable)
+./gradlew :orderbook:installDist          # -> orderbook/build/app/{bin,lib}, and ./haveno-orderbook
 
-- **Mainnet needs Tor egress.** Tor is embedded in the app (no sidecar), but the pod must
-  be allowed outbound network access to reach Tor relays; otherwise P2P bootstrap fails.
-- **monerod:** point `HAVENO_XMR_NODE` at an external mainnet node or run the commented-out
-  sidecar in `deployment.yaml`.
-- **Storage:** mount a PVC at `/data` so the P2P store and Tor identity survive restarts.
-- **Exposure:** the API is unauthenticated; front it with an ingress that adds TLS + auth.
+# Run directly against mainnet (bundled Tor; needs outbound network + a monerod)
+./haveno-orderbook --baseCurrencyNetwork=XMR_MAINNET --useNativeXmrWallet=false \
+  --appDataDir=/some/data --xmrNode=http://<monerod>:18081
+# then: curl localhost:8080/api/v1/health
 
-See [`docs/orderbook-api-feasibility.md`](../docs/orderbook-api-feasibility.md) for the
-feasibility study and the full mainnet soak-test runbook.
+# Unit tests
+./gradlew :orderbook:test
+```
+
+### Docker
+
+The Dockerfile packages the pre-built distribution onto a JRE base (build the dist first):
+
+```bash
+./gradlew :orderbook:installDist
+docker build -t haveno-orderbook:latest orderbook
+docker run -p 8080:8080 -e HAVENO_XMR_NODE=http://<monerod>:18081 haveno-orderbook:latest
+```
+
+### Kubernetes / k3s
+
+Manifests are in [`k8s/`](k8s/) (`configmap.yaml`, `deployment.yaml` + PVC, `service.yaml`),
+with liveness/readiness probes on `/api/v1/health` and a `/data` PVC for the P2P store + Tor
+identity. Full build-and-deploy instructions — including importing the image into k3s's
+containerd (`docker save` + `k3s ctr images import`) — are in [`k8s/README.md`](k8s/README.md).
+
+---
+
+## Mainnet & Tor requirements
+
+Haveno mainnet reaches its seed nodes **only over Tor** (`.onion` addresses). Tor is embedded
+in the app (netlayer) — **no Tor sidecar is needed** — but the pod/host must have ordinary
+**outbound TCP egress** so Tor can build circuits. A normal home k3s node has this. A
+reachable mainnet `monerod` (external or the optional sidecar in `deployment.yaml`) is used
+for reserve-spent offer validation. Mainnet bootstrap (Tor + P2P sync) takes several minutes;
+`/health` returns 200 while `bootstrapped:false` during bring-up — check the `bootstrapped`
+field for true data readiness.
 
 ---
 
 ## Verification
 
-- **Unit tests** (`./gradlew :orderbook:test`) cover the aggregation logic deterministically.
-- **Local soak** (no Tor, no funds, fully offline): [`scripts/soak-test.sh`](scripts/soak-test.sh)
-  drives the API and asserts it stays healthy and serving. Bring-up steps for the local
-  Haveno network are in the feasibility doc's runbook.
+Verified end-to-end on a self-contained local network (2× monerod in testnet/fixed-difficulty,
+seed node, registered arbitrator, funded maker daemon):
+
+- `:orderbook:test` — **7/7 unit tests pass** (sorting, cumulative depth, per-price-level
+  aggregation, unpriced-offer handling, depth limits, market summaries).
+- Observer starts **unattended**, bootstraps P2P, serves all endpoints (`/health` → `UP`).
+- Two **real arbitrator-signed offers** (SELL + BUY of XMR/BCH) placed via the maker daemon
+  propagated P2P → observer → API correctly: `/orderbook/BCH` returned
+  `bids:[0.0048 × 0.8 XMR]`, `asks:[0.005 × 1.0 XMR]`; `/markets` returned
+  `bestBid 0.0048, bestAsk 0.005, spread 0.0002, mid 0.0049` with correct per-side liquidity.
+  XMR amounts are reported accurately (the module reads atomic units directly from the P2P
+  payload).
+- **Docker image** builds; the container starts unattended (`--network host`), bootstraps in
+  ~12s, and serves the same live book.
+- A soak (`scripts/soak-test.sh`) confirmed continuous healthy serving (clean polls, zero
+  failures) for the duration it ran.
+
+> The full multi-hour mainnet soak is intended to run in a persistent environment (e.g. your
+> k8s cluster); the soak script works against any deployment.
+
+---
+
+## Known issues / notes
+
+- **Pre-existing `haveno-cli` amount scaling (not this module):** `haveno-cli createoffer
+  --amount` scales by 1e8 (satoshi) while the daemon expects XMR atomic units (1e12), so CLI
+  amounts come out 10,000× too small (multiply by 1e4 as a workaround). This module is
+  unaffected — it reads offer amounts directly from the P2P payload.
+- **Privacy:** the maker onion address is public on the wire but redacted in the API by
+  default (`HAVENO_EXPOSE_MAKER_ADDRESS=false`).
+- **Scale:** `/trades` is capped by `HAVENO_MAX_TRADES`; add pagination if you need larger
+  history exports.
+
+---
+
+## Files
+
+```
+orderbook/
+  build.gradle wiring          # in root build.gradle + settings.gradle (module ':orderbook')
+  Dockerfile, docker-entrypoint.sh, .dockerignore
+  k8s/{configmap,deployment,service}.yaml, k8s/README.md
+  scripts/soak-test.sh
+  src/main/java/haveno/orderbook/{OrderbookMain,OrderbookNode,OrderbookAggregator,RestApiServer,OrderbookConfig}.java
+  src/main/java/haveno/orderbook/model/Dto.java
+  src/main/resources/{openapi.yaml,logback.xml}
+  src/test/java/haveno/orderbook/OrderbookAggregatorTest.java
+docs/orderbook-api-feasibility.md   # feasibility study + local & mainnet soak runbooks
+```
+
+Licensed under AGPLv3, like the rest of Haveno.
