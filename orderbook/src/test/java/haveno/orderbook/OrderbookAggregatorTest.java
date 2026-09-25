@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
@@ -174,6 +175,21 @@ public class OrderbookAggregatorTest {
         assertEquals(2.0, s.spread);
         assertEquals(151.0, s.midPrice);
         assertEquals(2, s.uniqueMakers); // distinct offer ids used as maker fallback
+    }
+
+    @Test
+    void marketsSummaryComputesSideVwaps() {
+        List<Offer> offers = List.of(
+                offer("EUR", OfferDirection.BUY, 150.0, 1),
+                offer("EUR", OfferDirection.BUY, 140.0, 3),
+                offer("EUR", OfferDirection.SELL, 160.0, 2),
+                offer("EUR", OfferDirection.SELL, 170.0, 2));
+        when(offerBookService.getOffers()).thenReturn(offers);
+
+        Dto.MarketSummary s = aggregator.markets().get(0);
+        assertEquals(142.5, s.bidVwap, 1e-9); // (150*1 + 140*3) / 4
+        assertEquals(165.0, s.askVwap, 1e-9); // (160*2 + 170*2) / 4
+        assertNull(s.open24h); // no trade statistics
     }
 
     @Test

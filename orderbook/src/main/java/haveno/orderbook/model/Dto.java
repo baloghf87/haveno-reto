@@ -91,6 +91,11 @@ public final class Dto {
         public Double lastTradePrice;      // most recent completed trade price, may be null
         public double volume24hXmr;
         public int trades24h;
+        public Double bidVwap;             // size-weighted average price of the priced buy offers, may be null
+        public Double askVwap;             // size-weighted average price of the priced sell offers, may be null
+        public Double open24h;             // first trade price of the last 24h, may be null
+        public Double high24h;             // highest trade price of the last 24h, may be null
+        public Double low24h;              // lowest trade price of the last 24h, may be null
     }
 
     /** A single open offer (GET /api/v1/offers). */

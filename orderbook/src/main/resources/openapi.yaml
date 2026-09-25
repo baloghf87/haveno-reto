@@ -226,6 +226,11 @@ components:
         lastTradePrice: { type: number, format: double, nullable: true }
         volume24hXmr: { type: number, format: double }
         trades24h: { type: integer }
+        bidVwap: { type: number, nullable: true, description: "Size-weighted average price of the priced buy offers" }
+        askVwap: { type: number, nullable: true, description: "Size-weighted average price of the priced sell offers" }
+        open24h: { type: number, nullable: true, description: "First trade price of the last 24h" }
+        high24h: { type: number, nullable: true }
+        low24h: { type: number, nullable: true }
     Offer:
       type: object
       properties:

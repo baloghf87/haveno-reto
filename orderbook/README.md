@@ -96,7 +96,7 @@ Every market is `XMR/<currency>` (no cross-currency pairs). The API surfaces:
 | Endpoint | Description |
 |---|---|
 | `GET /health` | Node + API health (k8s liveness/readiness). |
-| `GET /markets` | All active markets with liquidity + price summaries. |
+| `GET /markets` | All active markets with liquidity + price summaries, incl. per-side VWAP (`bidVwap`/`askVwap`) and 24h `open24h`/`high24h`/`low24h` from the (deduplicated) trade statistics. |
 | `GET /ticker` | Alias of `/markets`. |
 | `GET /orderbook/{market}?depth={n}` | Aggregated bid/ask levels + cumulative depth. |
 | `GET /offers?market={code}&direction={BUY\|SELL}` | Raw per-offer detail. |

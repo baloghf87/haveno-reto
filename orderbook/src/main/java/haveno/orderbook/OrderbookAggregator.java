@@ -198,6 +198,7 @@ public class OrderbookAggregator {
         Set<String> makers = new HashSet<>();
         Double bestBid = null;
         Double bestAsk = null;
+        double bidNotional = 0, bidPricedXmr = 0, askNotional = 0, askPricedXmr = 0;
         for (Offer o : offers) {
             makers.add(o.getOwnerNodeAddress() == null ? o.getId() : o.getOwnerNodeAddress().getFullAddress());
             double amountXmr = toXmr(o.getAmount());
@@ -206,13 +207,17 @@ public class OrderbookAggregator {
                 s.buyOfferCount++;
                 s.buyLiquidityXmr += amountXmr;
                 if (price != null && (bestBid == null || price > bestBid)) bestBid = price;
+                if (price != null) { bidNotional += price * amountXmr; bidPricedXmr += amountXmr; }
             } else {
                 s.sellOfferCount++;
                 s.sellLiquidityXmr += amountXmr;
                 if (price != null && (bestAsk == null || price < bestAsk)) bestAsk = price;
+                if (price != null) { askNotional += price * amountXmr; askPricedXmr += amountXmr; }
             }
         }
         s.uniqueMakers = makers.size();
+        s.bidVwap = bidPricedXmr > 0 ? bidNotional / bidPricedXmr : null;
+        s.askVwap = askPricedXmr > 0 ? askNotional / askPricedXmr : null;
         s.bestBid = bestBid;
         s.bestAsk = bestAsk;
         if (bestBid != null && bestAsk != null) {
@@ -226,6 +231,9 @@ public class OrderbookAggregator {
         s.volume24hXmr = vol == null ? 0 : vol;
         Integer cnt = trades.count24h.get(code);
         s.trades24h = cnt == null ? 0 : cnt;
+        s.open24h = trades.open24h.get(code);
+        s.high24h = trades.high24h.get(code);
+        s.low24h = trades.low24h.get(code);
         return s;
     }
 
@@ -325,6 +333,7 @@ public class OrderbookAggregator {
         TradeAgg agg = new TradeAgg();
         long cutoff = System.currentTimeMillis() - DAY_MS;
         Map<String, Long> lastDate = new java.util.HashMap<>();
+        Map<String, Long> firstDate24h = new java.util.HashMap<>();
         for (TradeStatistics3 ts : dedupedTradeStatistics()) {
             String code = ts.getCurrency();
             if (code == null) continue;
@@ -340,6 +349,16 @@ public class OrderbookAggregator {
             if (date >= cutoff) {
                 agg.volume24hXmr.merge(code, toXmr(ts.getTradeAmount()), Double::sum);
                 agg.count24h.merge(code, 1, Integer::sum);
+                if (price != null) {
+                    double p = price.getDoubleValue();
+                    agg.high24h.merge(code, p, Math::max);
+                    agg.low24h.merge(code, p, Math::min);
+                    Long firstDate = firstDate24h.get(code);
+                    if (firstDate == null || date < firstDate) {
+                        firstDate24h.put(code, date);
+                        agg.open24h.put(code, p);
+                    }
+                }
             }
         }
         return agg;
@@ -420,5 +439,8 @@ public class OrderbookAggregator {
         final Map<String, Double> lastPrice = new java.util.HashMap<>();
         final Map<String, Double> volume24hXmr = new java.util.HashMap<>();
         final Map<String, Integer> count24h = new java.util.HashMap<>();
+        final Map<String, Double> open24h = new java.util.HashMap<>();
+        final Map<String, Double> high24h = new java.util.HashMap<>();
+        final Map<String, Double> low24h = new java.util.HashMap<>();
     }
 }
