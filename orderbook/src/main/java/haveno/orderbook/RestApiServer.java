@@ -102,7 +102,8 @@ public class RestApiServer {
                     if (market.isEmpty()) { writeError(ex, 400, "Missing market"); return; }
                     int limit = parseInt(q.get("limit"), 0);
                     long since = parseLong(q.get("since"), 0);
-                    writeJson(ex, 200, aggregator.trades(market, limit, since), pretty);
+                    long until = parseLong(q.get("until"), 0);
+                    writeJson(ex, 200, aggregator.trades(market, limit, since, until), pretty);
                 } else if (path.equals(PREFIX + "/openapi.yaml")) {
                     writeResource(ex, "openapi.yaml", "application/yaml");
                 } else {
@@ -130,7 +131,7 @@ public class RestApiServer {
         endpoints.put("prices", PREFIX + "/prices");
         endpoints.put("offers", PREFIX + "/offers?market={code}&direction={BUY|SELL}");
         endpoints.put("orderbook", PREFIX + "/orderbook/{code}?depth={n}");
-        endpoints.put("trades", PREFIX + "/trades/{code}?limit={n}&since={epochMs}");
+        endpoints.put("trades", PREFIX + "/trades/{code}?limit={n}&since={epochMs}&until={epochMs}");
         endpoints.put("openapi", PREFIX + "/openapi.yaml");
         m.put("endpoints", endpoints);
         return m;

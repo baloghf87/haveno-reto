@@ -160,6 +160,15 @@ public class OrderbookAggregator {
 
     /** Completed trades for a market, newest first. */
     public List<Dto.Trade> trades(String currencyCode, int limit, long sinceMs) {
+        return trades(currencyCode, limit, sinceMs, 0);
+    }
+
+    /**
+     * Completed trades for a market dated in {@code [sinceMs, untilMs)}, newest first ({@code untilMs}
+     * 0 = no upper bound). The upper bound lets a client page through history older than the
+     * {@code maxTradesPerResponse} most recent trades.
+     */
+    public List<Dto.Trade> trades(String currencyCode, int limit, long sinceMs, long untilMs) {
         String code = currencyCode.toUpperCase();
         int cap = Math.min(limit <= 0 ? config.maxTradesPerResponse : limit, config.maxTradesPerResponse);
         List<TradeStatistics3> all = dedupedTradeStatistics();
@@ -168,6 +177,7 @@ public class OrderbookAggregator {
         for (TradeStatistics3 ts : all) {
             if (!code.equalsIgnoreCase(ts.getCurrency())) continue;
             if (sinceMs > 0 && ts.getDateAsLong() < sinceMs) continue;
+            if (untilMs > 0 && ts.getDateAsLong() >= untilMs) continue;
             result.add(toTradeDto(ts));
             if (result.size() >= cap) break;
         }

@@ -146,6 +146,11 @@ paths:
           required: false
           description: Only trades on/after this epoch-ms.
           schema: { type: integer, format: int64 }
+        - name: until
+          in: query
+          required: false
+          description: Only trades before this epoch-ms (exclusive), to page through older history.
+          schema: { type: integer, format: int64 }
       responses:
         "200":
           description: Array of trades

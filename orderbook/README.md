@@ -101,7 +101,7 @@ Every market is `XMR/<currency>` (no cross-currency pairs). The API surfaces:
 | `GET /orderbook/{market}?depth={n}` | Aggregated bid/ask levels + cumulative depth. |
 | `GET /offers?market={code}&direction={BUY\|SELL}` | Raw per-offer detail. |
 | `GET /prices` | External reference (index) prices by currency code. |
-| `GET /trades/{market}?limit={n}&since={epochMs}` | Completed-trade history, newest first. |
+| `GET /trades/{market}?limit={n}&since={epochMs}&until={epochMs}` | Completed-trade history in `[since, until)`, newest first. |
 | `GET /openapi.yaml` | Machine-readable OpenAPI 3 spec. |
 
 ### Example
