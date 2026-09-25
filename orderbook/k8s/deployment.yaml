@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: haveno-orderbook
+  labels:
+    app: haveno-orderbook
+spec:
+  # Single replica: each node holds a full copy of the book, so replicas are for
+  # availability, not sharding. Use a Deployment; scale with care (each pod is a full
+  # P2P member and needs its own data volume — prefer a StatefulSet if scaling >1).
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: haveno-orderbook
+  template:
+    metadata:
+      labels:
+        app: haveno-orderbook
+    spec:
+      # IMPORTANT: mainnet P2P uses bundled Tor, which needs outbound network egress.
+      # Ensure any NetworkPolicy here allows egress (Tor relays on 443/9001), or supply
+      # bridges. No Tor sidecar is required — Tor is embedded in the app.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: orderbook
+          image: haveno-orderbook:latest   # replace with your registry/tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: haveno-orderbook-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "2.5Gi"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 4
+          volumeMounts:
+            - name: data
+              mountPath: /data
+        # OPTIONAL: run a mainnet monerod as a sidecar instead of pointing at an external
+        # node. Uncomment and set HAVENO_XMR_NODE=http://127.0.0.1:18081 in the ConfigMap.
+        # - name: monerod
+        #   image: sethsimmons/simple-monerod:latest
+        #   args: ["--rpc-bind-ip=127.0.0.1", "--rpc-bind-port=18081", "--non-interactive", "--prune-blockchain"]
+        #   volumeMounts:
+        #     - name: monero-data
+        #       mountPath: /home/monero/.bitmonero
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: haveno-orderbook-data
+        # - name: monero-data
+        #   persistentVolumeClaim:
+        #     claimName: haveno-monerod-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: haveno-orderbook-data
+  labels:
+    app: haveno-orderbook
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 2Gi

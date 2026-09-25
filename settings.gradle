@@ -10,6 +10,7 @@ include 'monitor'
 include 'relay'
 include 'seednode'
 include 'statsnode'
+include 'orderbook'
 include 'inventory'
 include 'apitest'
 

@@ -1,0 +1,6 @@
+# Keep the build context small: only the packaged distribution is needed.
+build/*
+!build/app
+src
+k8s
+*.md

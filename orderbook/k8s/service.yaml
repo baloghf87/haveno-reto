@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: haveno-orderbook
+  labels:
+    app: haveno-orderbook
+spec:
+  # ClusterIP by default — expose externally via an Ingress/Gateway that terminates TLS
+  # and applies auth/rate-limiting. The API itself is read-only and unauthenticated.
+  type: ClusterIP
+  selector:
+    app: haveno-orderbook
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
