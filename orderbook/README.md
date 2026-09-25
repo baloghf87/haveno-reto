@@ -220,6 +220,19 @@ seed node, registered arbitrator, funded maker daemon):
 
 ---
 
+## Mainnet verification (2026-09-25)
+
+- Built with the self-contained `orderbook/Dockerfile.full` (multi-stage: JDK 21 builder → JRE runtime,
+  build context = repo root): `docker build -f orderbook/Dockerfile.full -t haveno-orderbook .`
+- Ran against **XMR_MAINNET (RetoSwap)** with an external shared Tor (`--torControlHost=... --torControlPort=9051
+  --torControlPassword=...`) and a clearnet monerod (`HAVENO_XMR_NODE`, `--useTorForXmr=off`). Bootstrap in a
+  few minutes: 20 markets, ~480 offers, ~58k trade statistics.
+- Crypto-market prices are counter per XMR (XMR/BTC ≈ 0.0067, XMR/BCH ≈ 1.65) — consistent with the index price.
+- **Fixed: every trade appeared twice** in `/trades` and in the 24h volume/count — both traders publish a
+  `TradeStatistics3` for the same trade (different payload hashes). Entries are now deduplicated on
+  (currency, date, price, amount, payment method).
+- P2P books can be crossed (e.g. XMR/EUR best bid above best ask) because prices depend on the payment method.
+
 ## Known issues / notes
 
 - **`haveno-cli` amount scaling (fixed):** during verification the CLI's `createoffer

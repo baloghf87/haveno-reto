@@ -162,7 +162,7 @@ public class OrderbookAggregator {
     public List<Dto.Trade> trades(String currencyCode, int limit, long sinceMs) {
         String code = currencyCode.toUpperCase();
         int cap = Math.min(limit <= 0 ? config.maxTradesPerResponse : limit, config.maxTradesPerResponse);
-        List<TradeStatistics3> all = tradeStatisticsManager.getTradeStatisticsListCopy();
+        List<TradeStatistics3> all = dedupedTradeStatistics();
         List<Dto.Trade> result = new ArrayList<>();
         all.sort(Comparator.comparingLong(TradeStatistics3::getDateAsLong).reversed());
         for (TradeStatistics3 ts : all) {
@@ -294,12 +294,28 @@ public class OrderbookAggregator {
         return t;
     }
 
+    /**
+     * Trade statistics with one entry per trade. On the Haveno network each trade is usually published
+     * twice (once by each trader, with differing node-specific extra data and hence differing payload
+     * hashes), so identical (currency, date, price, amount, payment method) entries are collapsed.
+     */
+    private List<TradeStatistics3> dedupedTradeStatistics() {
+        List<TradeStatistics3> result = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (TradeStatistics3 ts : tradeStatisticsManager.getTradeStatisticsListCopy()) {
+            String key = ts.getCurrency() + '|' + ts.getDateAsLong() + '|' + (ts.getTradePrice() == null ? 0 : ts.getTradePrice().getValue()) + '|'
+                    + ts.getAmount() + '|' + ts.getPaymentMethodId();
+            if (seen.add(key)) result.add(ts);
+        }
+        return result;
+    }
+
     /** One-pass aggregation of trade statistics into per-market last price and 24h volume/count. */
     private TradeAgg aggregateTrades() {
         TradeAgg agg = new TradeAgg();
         long cutoff = System.currentTimeMillis() - DAY_MS;
         Map<String, Long> lastDate = new java.util.HashMap<>();
-        for (TradeStatistics3 ts : tradeStatisticsManager.getTradeStatisticsListCopy()) {
+        for (TradeStatistics3 ts : dedupedTradeStatistics()) {
             String code = ts.getCurrency();
             if (code == null) continue;
             long date = ts.getDateAsLong();
