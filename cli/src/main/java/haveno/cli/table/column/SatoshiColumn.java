@@ -18,11 +18,11 @@
 package haveno.cli.table.column;
 
 import static haveno.cli.CurrencyFormat.formatBsq;
-import static haveno.cli.CurrencyFormat.formatSatoshis;
+import static haveno.cli.CurrencyFormat.formatXmr;
 import static haveno.cli.table.column.Column.JUSTIFICATION.RIGHT;
 
 /**
- * For displaying BTC or BSQ satoshi values with appropriate precision.
+ * For displaying XMR atomic unit (piconero) or BSQ satoshi values with appropriate precision.
  */
 public class SatoshiColumn extends LongColumn {
 
@@ -51,7 +51,7 @@ public class SatoshiColumn extends LongColumn {
         rows.add(value);
 
         // We do not know how much padding each StringColumn value needs until it has all the values.
-        String s = isBsqSatoshis ? formatBsq(value) : formatSatoshis(value);
+        String s = isBsqSatoshis ? formatBsq(value) : formatXmr(value);
         stringColumn.addRow(s);
 
         if (isNewMaxWidth.test(s))
@@ -62,7 +62,7 @@ public class SatoshiColumn extends LongColumn {
     public String getRowAsFormattedString(int rowIndex) {
         return isBsqSatoshis
                 ? formatBsq(getRow(rowIndex))
-                : formatSatoshis(getRow(rowIndex));
+                : formatXmr(getRow(rowIndex));
     }
 
     @Override

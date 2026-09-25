@@ -57,7 +57,7 @@ import java.util.Date;
 import java.util.List;
 
 import static haveno.cli.CurrencyFormat.formatInternalFiatPrice;
-import static haveno.cli.CurrencyFormat.toSatoshis;
+import static haveno.cli.CurrencyFormat.toAtomicUnits;
 import static haveno.cli.Method.canceloffer;
 import static haveno.cli.Method.closetrade;
 import static haveno.cli.Method.confirmpaymentreceived;
@@ -274,8 +274,8 @@ public class CliMain {
                     var paymentAcctId = opts.getPaymentAccountId();
                     var direction = opts.getDirection();
                     var currencyCode = opts.getCurrencyCode();
-                    var amount = toSatoshis(opts.getAmount());
-                    var minAmount = toSatoshis(opts.getMinAmount());
+                    var amount = toAtomicUnits(opts.getAmount());
+                    var minAmount = toAtomicUnits(opts.getMinAmount());
                     var useMarketBasedPrice = opts.isUsingMktPriceMargin();
                     var fixedPrice = opts.getFixedPrice();
                     var marketPriceMarginPct = opts.getMktPriceMarginPct();

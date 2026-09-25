@@ -43,17 +43,17 @@ public class CreateOfferOptionParser extends AbstractMethodOptionParser implemen
     final OptionSpec<String> currencyCodeOpt = parser.accepts(OPT_CURRENCY_CODE, "currency code (xmr|eur|usd|...)")
             .withRequiredArg();
 
-    final OptionSpec<String> amountOpt = parser.accepts(OPT_AMOUNT, "amount of btc to buy or sell")
+    final OptionSpec<String> amountOpt = parser.accepts(OPT_AMOUNT, "amount of xmr to buy or sell")
             .withRequiredArg();
 
-    final OptionSpec<String> minAmountOpt = parser.accepts(OPT_MIN_AMOUNT, "minimum amount of btc to buy or sell")
+    final OptionSpec<String> minAmountOpt = parser.accepts(OPT_MIN_AMOUNT, "minimum amount of xmr to buy or sell")
             .withOptionalArg();
 
-    final OptionSpec<String> mktPriceMarginPctOpt = parser.accepts(OPT_MKT_PRICE_MARGIN, "market btc price margin (%)")
+    final OptionSpec<String> mktPriceMarginPctOpt = parser.accepts(OPT_MKT_PRICE_MARGIN, "market xmr price margin (%)")
             .withOptionalArg()
             .defaultsTo("0.00");
 
-    final OptionSpec<String> fixedPriceOpt = parser.accepts(OPT_FIXED_PRICE, "fixed btc price")
+    final OptionSpec<String> fixedPriceOpt = parser.accepts(OPT_FIXED_PRICE, "fixed xmr price")
             .withOptionalArg()
             .defaultsTo("0");
 
@@ -79,7 +79,7 @@ public class CreateOfferOptionParser extends AbstractMethodOptionParser implemen
             throw new IllegalArgumentException("no currency code specified");
 
         if (!options.has(amountOpt) || options.valueOf(amountOpt).isEmpty())
-            throw new IllegalArgumentException("no btc amount specified");
+            throw new IllegalArgumentException("no xmr amount specified");
 
         if (!options.has(paymentAccountIdOpt) || options.valueOf(paymentAccountIdOpt).isEmpty())
             throw new IllegalArgumentException("no payment account id specified");

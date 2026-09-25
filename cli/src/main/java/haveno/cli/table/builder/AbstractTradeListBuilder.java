@@ -30,7 +30,7 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import static haveno.cli.CurrencyFormat.formatSatoshis;
+import static haveno.cli.CurrencyFormat.formatXmr;
 import static haveno.cli.table.builder.TableBuilderConstants.COL_HEADER_BUYER_DEPOSIT;
 import static haveno.cli.table.builder.TableBuilderConstants.COL_HEADER_SELLER_DEPOSIT;
 import static haveno.cli.table.builder.TableType.TRADE_DETAIL_TBL;
@@ -160,7 +160,7 @@ abstract class AbstractTradeListBuilder extends AbstractTableBuilder {
     protected final Function<TradeInfo, String> toTradeVolumeAsString = (t) ->
             isTraditionalTrade.test(t)
                     ? t.getTradeVolume()
-                    : formatSatoshis(t.getAmount());
+                    : formatXmr(t.getAmount());
 
     protected final Function<TradeInfo, Long> toTradeVolumeAsLong = (t) ->
             isTraditionalTrade.test(t)
