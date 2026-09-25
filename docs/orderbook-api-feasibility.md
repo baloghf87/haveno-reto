@@ -126,6 +126,30 @@ Acceptance: `soak-test.sh` prints `PASS` — continuous successful polls for the
 duration, `status=UP`, `bootstrapped=true`, and offers observed after the grace period.
 Cross-check `/orderbook/{market}` against the posted offers.
 
+### In-session verification results (XMR_LOCAL)
+
+The pipeline was verified end-to-end on a self-contained local network (2× monerod in
+testnet/fixed-difficulty, seed node, registered arbitrator, funded maker daemon):
+
+- `:orderbook:test` — 7/7 unit tests pass.
+- Observer node starts unattended, bootstraps P2P, and serves all endpoints; `/health` →
+  `{"status":"UP","bootstrapped":true,...}`.
+- Two real, arbitrator-signed offers (a SELL and a BUY of XMR/BCH) placed via the maker
+  daemon propagated over P2P and appeared correctly in the API:
+  `/orderbook/BCH` → `bids:[{price:0.0048, amountXmr:0.8, cumulativeXmr:0.8}]`,
+  `asks:[{price:0.005, amountXmr:1.0, cumulativeXmr:1.0}]`; `/markets` →
+  `bestBid 0.0048, bestAsk 0.005, spread 0.0002, mid 0.0049`. XMR amounts are reported
+  correctly (the daemon stores atomic units; the module reads them directly).
+- Docker image builds and the container starts unattended (`--network host`), bootstraps
+  in ~12s, and serves the same live book on its REST port.
+- A multi-hour soak (`scripts/soak-test.sh`) confirms the API keeps serving without
+  intervention.
+
+> Note: the Bisq-derived `haveno-cli createoffer` scales `--amount` by 1e8 while the daemon
+> treats the value as XMR atomic units (1e12), so CLI amounts must be multiplied by 1e4 in
+> this local flow. This is a pre-existing CLI quirk unrelated to the orderbook module,
+> which reads offer amounts directly from the P2P payload.
+
 ### 3. Mainnet soak runbook (run where Tor egress is available, e.g. your k8s)
 
 > Haveno mainnet is only reachable over Tor. This step must run in an environment that
