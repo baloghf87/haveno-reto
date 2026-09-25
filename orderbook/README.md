@@ -222,10 +222,11 @@ seed node, registered arbitrator, funded maker daemon):
 
 ## Known issues / notes
 
-- **Pre-existing `haveno-cli` amount scaling (not this module):** `haveno-cli createoffer
-  --amount` scales by 1e8 (satoshi) while the daemon expects XMR atomic units (1e12), so CLI
-  amounts come out 10,000× too small (multiply by 1e4 as a workaround). This module is
-  unaffected — it reads offer amounts directly from the P2P payload.
+- **`haveno-cli` amount scaling (fixed):** during verification the CLI's `createoffer
+  --amount` scaled by 1e8 (satoshi) while the daemon expects XMR atomic units (1e12), making
+  CLI amounts 10,000× too small; this was fixed separately on `master`
+  (`fix(cli): scale offer amounts to XMR atomic units`). This module was never affected — it
+  reads offer amounts directly from the P2P payload.
 - **Privacy:** the maker onion address is public on the wire but redacted in the API by
   default (`HAVENO_EXPOSE_MAKER_ADDRESS=false`).
 - **Scale:** `/trades` is capped by `HAVENO_MAX_TRADES`; add pagination if you need larger
