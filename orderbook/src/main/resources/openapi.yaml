@@ -1,0 +1,260 @@
+openapi: 3.0.3
+info:
+  title: Haveno Orderbook & Liquidity API
+  version: "1.0.0"
+  description: >
+    Read-only REST/JSON API exposing a neutral, network-wide view of the Haveno
+    decentralized exchange: the live orderbook per market, per-market liquidity and
+    price summaries, raw open offers, external reference (index) prices, and completed
+    trade history.
+
+
+    The data is derived by a passive, wallet-less observer node that receives the full
+    replicated P2P offer book and append-only trade-statistics store. Every market is
+    `XMR/<currency>`; there are no cross-currency pairs.
+
+
+    ## Conventions
+
+    - **Amounts** (`amountXmr`, `*LiquidityXmr`, `cumulativeXmr`) are in whole XMR.
+
+    - **Prices** are in the market's counter currency per 1 XMR (for fiat/traditional
+      markets). For crypto markets the price follows the offer's monetary convention.
+
+    - **Direction** is from the maker's perspective on XMR: `BUY` offers are bids
+      (maker buys XMR), `SELL` offers are asks (maker sells XMR).
+
+    - **Timestamps** are Unix epoch milliseconds (UTC).
+
+    - Market-based (margin-priced) offers only yield a numeric price when a recent
+      reference price is available; otherwise their `price` is `null` and they are
+      counted in `unpricedOfferCount` instead of appearing on a depth level.
+
+    - Offers self-expire after ~11 minutes unless refreshed, so the book reflects
+      currently-live offers, not history.
+servers:
+  - url: /api/v1
+paths:
+  /health:
+    get:
+      summary: Node and API health
+      description: Liveness/readiness probe. Returns 200 as soon as the HTTP server is up; check `bootstrapped` for P2P readiness.
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+  /markets:
+    get:
+      summary: List all active markets with liquidity and price summaries
+      responses:
+        "200":
+          description: Array of market summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MarketSummary" }
+  /ticker:
+    get:
+      summary: Alias of /markets (per-market best bid/ask, spread, last price, 24h volume)
+      responses:
+        "200":
+          description: Array of market summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MarketSummary" }
+  /orderbook/{market}:
+    get:
+      summary: Aggregated bid/ask depth for one market
+      parameters:
+        - name: market
+          in: path
+          required: true
+          description: Counter-currency code, e.g. `EUR`, `USD`, `BTC`.
+          schema: { type: string }
+        - name: depth
+          in: query
+          required: false
+          description: Max number of price levels per side (0 or omitted = all).
+          schema: { type: integer, default: 0 }
+        - name: pretty
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Orderbook with cumulative depth
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Orderbook" }
+        "400": { description: Missing/invalid market }
+  /offers:
+    get:
+      summary: Raw open offers (per-offer detail)
+      parameters:
+        - name: market
+          in: query
+          required: false
+          description: Filter by counter-currency code.
+          schema: { type: string }
+        - name: direction
+          in: query
+          required: false
+          schema: { type: string, enum: [BUY, SELL] }
+      responses:
+        "200":
+          description: Array of offers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Offer" }
+  /prices:
+    get:
+      summary: External reference (index) prices by currency code
+      responses:
+        "200":
+          description: Map of currency code to price (counter currency per 1 XMR)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: { type: number, format: double }
+  /trades/{market}:
+    get:
+      summary: Completed trade history for one market (newest first)
+      description: >
+        Sourced from the network's append-only trade-statistics store. Note completed
+        trades carry no direction, and publication is randomly delayed up to 24h for
+        maker privacy, so 24h volume lags real time.
+      parameters:
+        - name: market
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          description: Max rows (server-capped).
+          schema: { type: integer }
+        - name: since
+          in: query
+          required: false
+          description: Only trades on/after this epoch-ms.
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Array of trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Trade" }
+  /openapi.yaml:
+    get:
+      summary: This OpenAPI document
+      responses:
+        "200": { description: OpenAPI spec }
+components:
+  schemas:
+    Health:
+      type: object
+      properties:
+        status: { type: string, enum: [UP, STARTING, DOWN] }
+        bootstrapped: { type: boolean }
+        network: { type: string, example: XMR_MAINNET }
+        numConnections: { type: integer }
+        numOffers: { type: integer }
+        numMarkets: { type: integer }
+        numTradeStatistics: { type: integer }
+        priceFeedAvailable: { type: boolean }
+        uptimeSeconds: { type: integer, format: int64 }
+        version: { type: string }
+        timestamp: { type: integer, format: int64 }
+    Level:
+      type: object
+      description: One aggregated price level.
+      properties:
+        price: { type: number, format: double }
+        amountXmr: { type: number, format: double }
+        offerCount: { type: integer }
+        cumulativeXmr: { type: number, format: double, description: Running total from the best price to this level. }
+    Orderbook:
+      type: object
+      properties:
+        market: { type: string, example: XMR/EUR }
+        counterCurrency: { type: string, example: EUR }
+        currencyType: { type: string, enum: [fiat, crypto] }
+        indexPrice: { type: number, format: double, nullable: true }
+        bids:
+          type: array
+          description: Buy offers, highest price first.
+          items: { $ref: "#/components/schemas/Level" }
+        asks:
+          type: array
+          description: Sell offers, lowest price first.
+          items: { $ref: "#/components/schemas/Level" }
+        unpricedOfferCount: { type: integer, description: Market-based offers with no resolvable price. }
+        timestamp: { type: integer, format: int64 }
+    MarketSummary:
+      type: object
+      properties:
+        market: { type: string }
+        baseCurrency: { type: string, example: XMR }
+        counterCurrency: { type: string }
+        currencyType: { type: string, enum: [fiat, crypto] }
+        buyOfferCount: { type: integer }
+        sellOfferCount: { type: integer }
+        buyLiquidityXmr: { type: number, format: double }
+        sellLiquidityXmr: { type: number, format: double }
+        uniqueMakers: { type: integer }
+        bestBid: { type: number, format: double, nullable: true }
+        bestAsk: { type: number, format: double, nullable: true }
+        spread: { type: number, format: double, nullable: true }
+        spreadPct: { type: number, format: double, nullable: true }
+        midPrice: { type: number, format: double, nullable: true }
+        indexPrice: { type: number, format: double, nullable: true }
+        lastTradePrice: { type: number, format: double, nullable: true }
+        volume24hXmr: { type: number, format: double }
+        trades24h: { type: integer }
+    Offer:
+      type: object
+      properties:
+        id: { type: string }
+        market: { type: string }
+        direction: { type: string, enum: [BUY, SELL] }
+        currencyType: { type: string, enum: [fiat, crypto] }
+        price: { type: number, format: double, nullable: true }
+        useMarketBasedPrice: { type: boolean }
+        marketPriceMarginPct: { type: number, format: double }
+        amountXmr: { type: number, format: double }
+        minAmountXmr: { type: number, format: double }
+        isRange: { type: boolean }
+        volume: { type: number, format: double, nullable: true }
+        paymentMethod: { type: string }
+        makerFeePct: { type: number, format: double }
+        takerFeePct: { type: number, format: double }
+        penaltyFeePct: { type: number, format: double }
+        buyerSecurityDepositPct: { type: number, format: double }
+        sellerSecurityDepositPct: { type: number, format: double }
+        maxTradeLimitXmr: { type: number, format: double, nullable: true }
+        maxTradePeriodMs: { type: integer, format: int64 }
+        countryCode: { type: string, nullable: true }
+        f2fCity: { type: string, nullable: true }
+        isPrivate: { type: boolean }
+        makerNodeAddress: { type: string, nullable: true, description: Redacted unless HAVENO_EXPOSE_MAKER_ADDRESS=true. }
+        date: { type: integer, format: int64 }
+    Trade:
+      type: object
+      properties:
+        market: { type: string }
+        counterCurrency: { type: string }
+        price: { type: number, format: double }
+        amountXmr: { type: number, format: double }
+        volume: { type: number, format: double, nullable: true }
+        paymentMethod: { type: string }
+        date: { type: integer, format: int64 }

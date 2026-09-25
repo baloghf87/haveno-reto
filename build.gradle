@@ -137,6 +137,7 @@ configure([project(':cli'),
            project(':relay'),
            project(':seednode'),
            project(':statsnode'),
+           project(':orderbook'),
            project(':inventory'),
            project(':apitest')]) {
 
@@ -822,6 +823,28 @@ configure(project(':statsnode')) {
         implementation("com.google.inject:guice:$guiceVersion") {
             exclude(module: 'guava')
         }
+    }
+}
+
+configure(project(':orderbook')) {
+    mainClassName = 'haveno.orderbook.OrderbookMain'
+
+    dependencies {
+        implementation project(':common')
+        implementation project(':p2p')
+        implementation project(':core')
+        annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+        compileOnly "org.projectlombok:lombok:$lombokVersion"
+        implementation "org.slf4j:slf4j-api:$slf4jVersion"
+        implementation "com.google.code.gson:gson:$gsonVersion"
+        implementation("com.google.inject:guice:$guiceVersion") {
+            exclude(module: 'guava')
+        }
+        testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
+        testCompileOnly "org.projectlombok:lombok:$lombokVersion"
+        testImplementation "org.mockito:mockito-core:$mockitoVersion"
+        testImplementation "org.junit.jupiter:junit-jupiter-api:$jupiterVersion"
+        testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$jupiterVersion"
     }
 }
 
