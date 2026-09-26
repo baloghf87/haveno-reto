@@ -20,7 +20,9 @@ package haveno.orderbook;
 import com.google.inject.Injector;
 import haveno.common.config.Config;
 import haveno.core.app.misc.AppSetup;
+import haveno.core.alert.AlertManager;
 import haveno.core.app.misc.AppSetupWithP2P;
+import haveno.core.filter.FilterManager;
 import haveno.core.offer.OfferBookService;
 import haveno.core.provider.price.PriceFeedService;
 import haveno.core.trade.statistics.TradeStatisticsManager;
@@ -44,6 +46,8 @@ public class OrderbookNode {
     private PriceFeedService priceFeedService;
     private TradeStatisticsManager tradeStatisticsManager;
     private P2PService p2pService;
+    private FilterManager filterManager;
+    private AlertManager alertManager;
     private AppSetup appSetup;
     private RestApiServer restApiServer;
 
@@ -52,6 +56,10 @@ public class OrderbookNode {
         offerBookService = injector.getInstance(OfferBookService.class);
         priceFeedService = injector.getInstance(PriceFeedService.class);
         tradeStatisticsManager = injector.getInstance(TradeStatisticsManager.class);
+        // The network's signed filter (version floors) is initialised by AppSetupWithP2P. The alert manager
+        // only listens from its construction on (no replay), so it has to exist before appSetup.start().
+        filterManager = injector.getInstance(FilterManager.class);
+        alertManager = injector.getInstance(AlertManager.class);
         Config havenoConfig = injector.getInstance(Config.class);
 
         // We need the price feed to resolve market-based (margin) offers into executable prices.
@@ -72,7 +80,7 @@ public class OrderbookNode {
         OrderbookConfig obConfig = OrderbookConfig.fromEnv();
         OrderbookAggregator aggregator = new OrderbookAggregator(
                 offerBookService, priceFeedService, tradeStatisticsManager, p2pService,
-                obConfig, havenoConfig.baseCurrencyNetwork.name());
+                obConfig, havenoConfig.baseCurrencyNetwork.name(), filterManager, alertManager);
         restApiServer = new RestApiServer(aggregator, obConfig);
         try {
             restApiServer.start();

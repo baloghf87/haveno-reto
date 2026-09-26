@@ -17,6 +17,10 @@
 
 package haveno.orderbook;
 
+import haveno.common.app.Version;
+import haveno.core.alert.Alert;
+import haveno.core.alert.AlertManager;
+import haveno.core.filter.FilterManager;
 import haveno.core.locale.CurrencyUtil;
 import haveno.core.monetary.Price;
 import haveno.core.monetary.Volume;
@@ -62,6 +66,9 @@ public class OrderbookAggregator {
     private final P2PService p2PService;
     private final OrderbookConfig config;
     private final String networkName;
+    // null when built without the network services (tests)
+    private final FilterManager filterManager;
+    private final AlertManager alertManager;
     private final long startTimeMs = System.currentTimeMillis();
 
     public OrderbookAggregator(OfferBookService offerBookService,
@@ -70,12 +77,26 @@ public class OrderbookAggregator {
                                P2PService p2PService,
                                OrderbookConfig config,
                                String networkName) {
+        this(offerBookService, priceFeedService, tradeStatisticsManager, p2PService, config, networkName,
+                null, null);
+    }
+
+    public OrderbookAggregator(OfferBookService offerBookService,
+                               PriceFeedService priceFeedService,
+                               TradeStatisticsManager tradeStatisticsManager,
+                               P2PService p2PService,
+                               OrderbookConfig config,
+                               String networkName,
+                               FilterManager filterManager,
+                               AlertManager alertManager) {
         this.offerBookService = offerBookService;
         this.priceFeedService = priceFeedService;
         this.tradeStatisticsManager = tradeStatisticsManager;
         this.p2PService = p2PService;
         this.config = config;
         this.networkName = networkName;
+        this.filterManager = filterManager;
+        this.alertManager = alertManager;
     }
 
     ///////////////////////////////////////////////////////////////////////////////////////////
@@ -97,7 +118,37 @@ public class OrderbookAggregator {
         h.uptimeSeconds = (System.currentTimeMillis() - startTimeMs) / 1000;
         h.version = OrderbookConfig.VERSION;
         h.timestamp = System.currentTimeMillis();
+        h.coreVersion = Version.VERSION;
+        h.numConnectedPeers = p2PService.getNumConnectedPeers() != null ? p2PService.getNumConnectedPeers().get() : h.numConnections;
+        if (filterManager != null) {
+            h.requireUpdateForTrading = filterManager.requireUpdateToNewVersionForTrading();
+            h.disableTradeBelowVersion = filterManager.getDisableTradeBelowVersion();
+        }
+        if (alertManager != null) {
+            h.alert = alertDto(alertManager.alertMessageProperty().get());
+        }
+        for (Offer offer : offers) {
+            String v = offer.getVersionNr();
+            if (!isSemver(v)) continue;
+            if (Version.isNewVersion(v)) h.offersNewerThanOurs++;
+            if (h.maxOfferVersion == null || Version.isNewVersion(v, h.maxOfferVersion)) h.maxOfferVersion = v;
+        }
         return h;
+    }
+
+    static Dto.Alert alertDto(Alert alert) {
+        if (alert == null) return null;
+        Dto.Alert a = new Dto.Alert();
+        a.message = alert.getMessage();
+        a.version = alert.getVersion() == null || alert.getVersion().isBlank() ? null : alert.getVersion();
+        a.updateInfo = alert.isUpdateInfo();
+        a.preReleaseInfo = alert.isPreReleaseInfo();
+        a.newerThanOurs = (a.updateInfo || a.preReleaseInfo) && isSemver(a.version) && Version.isNewVersion(a.version);
+        return a;
+    }
+
+    static boolean isSemver(String v) {
+        return v != null && v.matches("\\d+\\.\\d+\\.\\d+");
     }
 
     /** All active markets with liquidity/price summaries. */

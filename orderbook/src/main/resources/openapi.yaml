@@ -178,8 +178,24 @@ components:
         numTradeStatistics: { type: integer }
         priceFeedAvailable: { type: boolean }
         uptimeSeconds: { type: integer, format: int64 }
-        version: { type: string }
+        version: { type: string, description: This adapter's version. }
         timestamp: { type: integer, format: int64 }
+        coreVersion: { type: string, description: The Haveno core version this node runs. }
+        numConnectedPeers: { type: integer }
+        requireUpdateForTrading: { type: boolean, description: The network's signed filter refuses trading below a version newer than ours. }
+        disableTradeBelowVersion: { type: string, nullable: true }
+        alert:
+          type: object
+          nullable: true
+          description: The latest developer alert on the network.
+          properties:
+            message: { type: string }
+            version: { type: string, nullable: true }
+            updateInfo: { type: boolean }
+            preReleaseInfo: { type: boolean }
+            newerThanOurs: { type: boolean }
+        maxOfferVersion: { type: string, nullable: true, description: Highest maker version among the open offers. }
+        offersNewerThanOurs: { type: integer }
     Level:
       type: object
       description: One aggregated price level.

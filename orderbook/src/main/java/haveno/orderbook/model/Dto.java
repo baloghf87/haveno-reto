@@ -40,8 +40,25 @@ public final class Dto {
         public int numTradeStatistics;
         public boolean priceFeedAvailable;
         public long uptimeSeconds;
-        public String version;
+        public String version;             // this adapter's version (OrderbookConfig.VERSION)
         public long timestamp;
+        // Network signals: is our Haveno still acceptable to the network?
+        public String coreVersion;         // our Haveno core version (Version.VERSION)
+        public int numConnectedPeers;      // P2P peers we are connected to
+        public boolean requireUpdateForTrading; // the signed filter's trade floor is above our version
+        public String disableTradeBelowVersion; // that floor as published, or null
+        public Alert alert;                // the latest developer alert on the network, or null
+        public String maxOfferVersion;     // highest maker version among the open offers
+        public int offersNewerThanOurs;    // open offers made by a newer Haveno than ours
+    }
+
+    /** A developer alert; {@code updateInfo} marks a release announcement. */
+    public static class Alert {
+        public String message;
+        public String version;
+        public boolean updateInfo;
+        public boolean preReleaseInfo;
+        public boolean newerThanOurs;      // an update/pre-release announcement for a newer version
     }
 
     /** One aggregated price level in the orderbook. */

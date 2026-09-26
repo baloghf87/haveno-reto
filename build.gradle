@@ -840,6 +840,8 @@ configure(project(':orderbook')) {
         implementation("com.google.inject:guice:$guiceVersion") {
             exclude(module: 'guava')
         }
+        // core exposes peer counts and the developer alert as JavaFX properties (health signals)
+        implementation "org.openjfx:javafx-base:$javafxVersion:$os"
         testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
         testCompileOnly "org.projectlombok:lombok:$lombokVersion"
         testImplementation "org.mockito:mockito-core:$mockitoVersion"

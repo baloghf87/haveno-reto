@@ -17,6 +17,10 @@
 
 package haveno.orderbook;
 
+import haveno.common.app.Version;
+import haveno.core.alert.Alert;
+import haveno.core.alert.AlertManager;
+import haveno.core.filter.FilterManager;
 import haveno.core.monetary.Price;
 import haveno.core.offer.Offer;
 import haveno.core.offer.OfferBookService;
@@ -26,6 +30,9 @@ import haveno.core.provider.price.PriceFeedService;
 import haveno.core.trade.statistics.TradeStatistics3;
 import haveno.core.trade.statistics.TradeStatisticsManager;
 import haveno.network.p2p.P2PService;
+import haveno.network.p2p.network.NetworkNode;
+import javafx.beans.property.SimpleIntegerProperty;
+import javafx.beans.property.SimpleObjectProperty;
 import haveno.orderbook.model.Dto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.lenient;
@@ -209,5 +217,45 @@ public class OrderbookAggregatorTest {
         assertTrue(ob.bids.isEmpty());
         assertTrue(ob.asks.isEmpty());
         assertTrue(ob.timestamp > 0);
+    }
+
+    @Test
+    void healthReportsTheNetworksVersionDemands() {
+        String newer = "99.0.0";
+        Offer ours = offer("EUR", OfferDirection.BUY, 150.0, 1);
+        Offer fromNewer = offer("EUR", OfferDirection.SELL, 152.0, 1);
+        lenient().when(ours.getVersionNr()).thenReturn(Version.VERSION);
+        lenient().when(fromNewer.getVersionNr()).thenReturn(newer);
+        when(offerBookService.getOffers()).thenReturn(List.of(ours, fromNewer));
+        NetworkNode networkNode = mock(NetworkNode.class);
+        when(networkNode.getAllConnections()).thenReturn(Collections.emptySet());
+        when(p2PService.getNetworkNode()).thenReturn(networkNode);
+        when(p2PService.getNumConnectedPeers()).thenReturn(new SimpleIntegerProperty(7));
+        FilterManager filterManager = mock(FilterManager.class);
+        when(filterManager.requireUpdateToNewVersionForTrading()).thenReturn(true);
+        when(filterManager.getDisableTradeBelowVersion()).thenReturn(newer);
+        AlertManager alertManager = mock(AlertManager.class);
+        when(alertManager.alertMessageProperty())
+                .thenReturn(new SimpleObjectProperty<>(new Alert("Update now", true, false, newer)));
+
+        Dto.Health h = new OrderbookAggregator(offerBookService, priceFeedService, tradeStatisticsManager,
+                p2PService, OrderbookConfig.fromEnv(), "XMR_LOCAL", filterManager, alertManager).health();
+
+        assertEquals(Version.VERSION, h.coreVersion);
+        assertEquals(7, h.numConnectedPeers);
+        assertTrue(h.requireUpdateForTrading);
+        assertEquals(newer, h.disableTradeBelowVersion);
+        assertEquals(newer, h.maxOfferVersion);
+        assertEquals(1, h.offersNewerThanOurs);
+        assertEquals("Update now", h.alert.message);
+        assertTrue(h.alert.updateInfo);
+        assertTrue(h.alert.newerThanOurs);
+    }
+
+    @Test
+    void alertForOurOwnVersionIsNotNewer() {
+        assertFalse(OrderbookAggregator.alertDto(new Alert("hi", true, false, Version.VERSION)).newerThanOurs);
+        assertFalse(OrderbookAggregator.alertDto(new Alert("maintenance", false, false, "")).newerThanOurs);
+        assertNull(OrderbookAggregator.alertDto(null));
     }
 }
